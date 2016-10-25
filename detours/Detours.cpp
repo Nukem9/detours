@@ -55,7 +55,7 @@ namespace Detours
 			memcpy(&buffer, Memory, Length);
 
 			// Write all 8 bytes at once
-			InterlockedExchange64((volatile LONGLONG *)Target, *(LONGLONG *)&buffer);
+			_intrinInterlockedExchange64((volatile LONGLONG *)Target, *(LONGLONG *)&buffer);
 		}
 
 		// Ignore if this fails, the memory was copied either way

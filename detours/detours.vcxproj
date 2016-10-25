@@ -207,6 +207,7 @@
     <ClInclude Include="distorm\mnemonics.h" />
     <ClInclude Include="distorm\operands.h" />
     <ClInclude Include="distorm\prefix.h" />
+    <ClInclude Include="Intrinsic.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="distorm\textdefs.h" />
     <ClInclude Include="distorm\wstring.h" />
