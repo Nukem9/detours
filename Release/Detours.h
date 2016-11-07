@@ -8,7 +8,7 @@ namespace Detours
 	typedef unsigned __int32 uint32_t;
 	typedef unsigned __int64 uint64_t;
 
-#ifdef _M_IX86 // Not the same as _WIN32
+#ifdef _M_IX86
 	typedef __w64 unsigned long sizeptr_t;
 #else
 	typedef unsigned long long	sizeptr_t;
@@ -46,7 +46,7 @@ namespace Detours
 	bool		DetourCopyMemory(uint8_t *Target, uint8_t *Memory, sizeptr_t Length);
 	bool		DetourFlushCache(uint8_t *Target, sizeptr_t Length);
 
-#if defined(_M_IX86)
+#ifdef _M_IX86
 	enum class X86Option
 	{
 		USE_JUMP,		// jmp <address>;
@@ -93,7 +93,7 @@ namespace Detours
 
 		uint32_t	DetourGetHookLength(X86Option Options);
 	}
-#endif // defined(_M_IX86)
+#endif // _M_IX86
 
 #ifdef _WIN64
 	enum class X64Option
