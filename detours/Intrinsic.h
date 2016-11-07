@@ -32,7 +32,7 @@ _intrinInterlockedExchange64(
 	do
 	{
 		Old = *Target;
-	} while (InterlockedCompareExchange64(Target, Value, Old) != Old);
+	} while (_intrinInterlockedCompareExchange64(Target, Value, Old) != Old);
 
 	return Old;
 }
