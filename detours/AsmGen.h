@@ -29,4 +29,5 @@ public:
 
 	BYTE *GetStream(bool Free = true);
 	size_t GetStreamLength();
+	bool WriteStreamTo(BYTE *Buffer, size_t BufferSize = -1);
 };

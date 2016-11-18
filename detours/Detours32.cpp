@@ -15,7 +15,7 @@ namespace Detours
 		#define JUMP_PTR_LENGTH_32	0x06	// jmp dword ptr <addr>
 		#define PUSH_RET_LENGTH_32	0x06	// push <addr>; retn
 
-		#define ALIGN_32(x)			DetourAlignAddress((uint64_t)(x), 0x4);
+		#define ALIGN_32(x)			Internal::AlignAddress((uint64_t)(x), 4);
 
 		uint8_t *DetourFunction(uint8_t *Target, uint8_t *Detour, X86Option Options)
 		{
@@ -46,7 +46,7 @@ namespace Detours
 			if (totalInstrSize < neededSize)
 				return nullptr;
 
-			// Allocate the trampoline data
+			// Allocate the trampoline page
 			uint32_t allocSize = 0;
 			allocSize += sizeof(JumpTrampolineHeader);	// Base structure
 			allocSize += totalInstrSize;				// Size of the copied instructions
@@ -60,7 +60,7 @@ namespace Detours
 				return nullptr;
 
 			// Fill out the header
-			JumpTrampolineHeader *header = (JumpTrampolineHeader *)jumpTrampolinePtr;
+			auto header					= (JumpTrampolineHeader *)jumpTrampolinePtr;
 
 			header->Magic				= HEADER_MAGIC;
 			header->Random				= GetCurrentProcessId() + GetCurrentThreadId() + totalInstrSize;
@@ -101,18 +101,18 @@ namespace Detours
 			default:						result = false;							break;
 			}
 
-			// If an operation failed free the memory and exit
+			// If an operation failed, free the memory and exit
 			if (!result)
 			{
 				VirtualFree(jumpTrampolinePtr, 0, MEM_RELEASE);
 				return nullptr;
 			}
 
-			// Force flush any possible CPU cache
-			DetourFlushCache(Target, totalInstrSize);
-			DetourFlushCache(jumpTrampolinePtr, allocSize);
+			// Force flush any possible CPU caches
+			Internal::FlushCache(Target, totalInstrSize);
+			Internal::FlushCache(jumpTrampolinePtr, allocSize);
 
-			// Set read/execution on the page
+			// Set read/execution on the trampoline page
 			DWORD dwOld = 0;
 			VirtualProtect(jumpTrampolinePtr, allocSize, PAGE_EXECUTE_READ, &dwOld);
 
@@ -127,10 +127,10 @@ namespace Detours
 				return false;
 
 			// Rewrite the backed-up code
-			if (!DetourCopyMemory(header->CodeOffset, header->InstructionOffset, header->InstructionLength))
+			if (!Internal::AtomicCopy4X8(header->CodeOffset, header->InstructionOffset, header->InstructionLength))
 				return false;
 
-			DetourFlushCache(header->CodeOffset, header->InstructionLength);
+			Internal::FlushCache(header->CodeOffset, header->InstructionLength);
 			VirtualFree(header, 0, MEM_RELEASE);
 
 			return true;
@@ -138,16 +138,12 @@ namespace Detours
 
 		uint8_t *DetourVTable(uint8_t *Target, uint8_t *Detour, uint32_t TableIndex)
 		{
-			// Each function is stored in an array
+			// Each function is stored in an array - also get a copy of the original
 			uint8_t *virtualPointer = (Target + (TableIndex * sizeof(ULONG)));
+			uint8_t *original		= *(uint8_t **)virtualPointer;
 
-			DWORD dwOld = 0;
-			if (!VirtualProtect(virtualPointer, sizeof(ULONG), PAGE_EXECUTE_READWRITE, &dwOld))
+			if (!Internal::AtomicCopy4X8(virtualPointer, Detour, sizeof(ULONG)))
 				return nullptr;
-
-			uint8_t *original = (uint8_t *)InterlockedExchange((volatile ULONG *)virtualPointer, (ULONG)Detour);
-
-			VirtualProtect(virtualPointer, sizeof(ULONG), dwOld, &dwOld);
 
 			return original;
 		}
@@ -165,19 +161,17 @@ namespace Detours
 			// Determine where the 'unhooked' part of the function starts
 			uint8_t *unhookStart = (Header->CodeOffset + Header->InstructionLength);
 
-			// Jump to hooked function (Backed up instructions)
+			// Jump to hooked function (backed up instructions)
 			uint8_t *binstr_ptr = (Header->InstructionOffset + Header->InstructionLength);
 
 			AsmGen hookGen(binstr_ptr, ASMGEN_32);
 			hookGen.AddCode("jmp 0x%X", unhookStart);
+			hookGen.WriteStreamTo(binstr_ptr);
 
-			memcpy(binstr_ptr, hookGen.GetStream(), hookGen.GetStreamLength());
-
-			// Jump to user function (Write the trampoline)
+			// Jump to user function (write the trampoline)
 			AsmGen userGen(Header->TrampolineOffset, ASMGEN_32);
 			userGen.AddCode("jmp 0x%X", Header->DetourOffset);
-
-			memcpy(Header->TrampolineOffset, userGen.GetStream(), userGen.GetStreamLength());
+			userGen.WriteStreamTo(Header->TrampolineOffset);
 		}
 
 		bool DetourWriteJump(JumpTrampolineHeader *Header)
@@ -187,7 +181,7 @@ namespace Detours
 			// Jump to trampoline (from hooked function)
 			gen.AddCode("jmp 0x%X", Header->TrampolineOffset);
 
-			return DetourAtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
+			return Internal::AtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
 		}
 
 		bool DetourWriteCall(JumpTrampolineHeader *Header)
@@ -197,7 +191,7 @@ namespace Detours
 			// Call to trampoline (from hooked function)
 			gen.AddCode("call 0x%X", Header->TrampolineOffset);
 
-			return DetourAtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
+			return Internal::AtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
 		}
 
 		bool DetourWriteEaxJump(JumpTrampolineHeader *Header)
@@ -208,7 +202,7 @@ namespace Detours
 			gen.AddCode("mov eax, 0x%X", Header->TrampolineOffset);
 			gen.AddCode("jmp eax");
 
-			return DetourAtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
+			return Internal::AtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
 		}
 
 		bool DetourWriteJumpPtr(JumpTrampolineHeader *Header)
@@ -218,7 +212,7 @@ namespace Detours
 			// Pointer jump to trampoline
 			gen.AddCode("jmp dword ptr ds:[0x%X]", &Header->TrampolineOffset);
 
-			return DetourAtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
+			return Internal::AtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
 		}
 
 		bool DetourWritePushRet(JumpTrampolineHeader *Header)
@@ -229,7 +223,7 @@ namespace Detours
 			gen.AddCode("push 0x%X", Header->TrampolineOffset);
 			gen.AddCode("retn");
 
-			return DetourAtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
+			return Internal::AtomicCopy4X8(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
 		}
 
 		uint32_t DetourGetHookLength(X86Option Options)

@@ -84,7 +84,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>ASMJIT_RELEASE;ASMJIT_EMBED;ASMJIT_BUILD_X86;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ASMJIT_EMBED;ASMJIT_BUILD_X86;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <AdditionalOptions>/std:c++latest %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -114,7 +114,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>ASMJIT_RELEASE;ASMJIT_EMBED;ASMJIT_BUILD_X86;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ASMJIT_EMBED;ASMJIT_BUILD_X86;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <WholeProgramOptimization>true</WholeProgramOptimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -202,6 +202,7 @@
     <ClInclude Include="asmjit\asmtk\src\asmtk\asmtk.h" />
     <ClInclude Include="asmjit\asmtk\src\asmtk\asmtokenizer.h" />
     <ClInclude Include="asmjit\asmtk\src\asmtk\strtod.h" />
+    <ClInclude Include="DetoursInternal.h" />
     <ClInclude Include="distorm\config.h" />
     <ClInclude Include="distorm\decoder.h" />
     <ClInclude Include="Detours.h" />
@@ -429,7 +430,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Detours.cpp" />
+    <ClCompile Include="DetoursInternal.cpp" />
     <ClCompile Include="Detours32.cpp" />
     <ClCompile Include="Detours64.cpp" />
     <ClCompile Include="distorm\distorm.c">

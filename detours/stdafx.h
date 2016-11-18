@@ -11,3 +11,4 @@
 #include "AsmGen.h"
 #include "Reassembler.h"
 #include "Detours.h"
+#include "DetoursInternal.h"

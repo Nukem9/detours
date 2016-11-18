@@ -99,3 +99,17 @@ size_t AsmGen::GetStreamLength()
 {
 	return m_Stream.size();
 }
+
+bool AsmGen::WriteStreamTo(BYTE *Buffer, size_t BufferSize)
+{
+	// Disregard size checks if someone sends -1
+	if (BufferSize != (size_t)-1)
+	{
+		if (m_Stream.size() > BufferSize)
+			return false;
+	}
+
+	memset(Buffer, 0, BufferSize);
+	memcpy(Buffer, m_Stream.data(), m_Stream.size());
+	return true;
+}

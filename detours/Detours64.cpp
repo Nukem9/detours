@@ -9,10 +9,10 @@ namespace Detours
 
 		#define MAX_INSTRUCT_SIZE	0x10
 
-		#define RAX_JUMP_64			0x0C	// mov rax, <addr>; jmp rax;
+		#define RAX_JUMP_LENGTH_64	0x0C	// mov rax, <addr>; jmp rax;
 		#define PUSH_RET_LENGTH_64	0x0E	// push <low 32 addr>; mov [rsp+4h], <hi 32 addr>; ret;
 
-		#define ALIGN_64(x)			DetourAlignAddress((uint64_t)(x), 0x10);
+		#define ALIGN_64(x)			Internal::AlignAddress((uint64_t)(x), 16);
 
 		uint8_t *DetourFunction(uint8_t *Target, uint8_t *Detour, X64Option Options)
 		{
@@ -94,8 +94,8 @@ namespace Detours
 			}
 
 			// Force flush any possible CPU cache
-			DetourFlushCache(Target, totalInstrSize);
-			DetourFlushCache(jumpTrampolinePtr, allocSize);
+			Internal::FlushCache(Target, totalInstrSize);
+			Internal::FlushCache(jumpTrampolinePtr, allocSize);
 
 			// Set read/execution on the page
 			DWORD dwOld = 0;
@@ -111,16 +111,12 @@ namespace Detours
 
 		uint8_t *DetourVTable(uint8_t *Target, uint8_t *Detour, uint32_t TableIndex)
 		{
-			// Each function is stored in an array
-			uint8_t *virtualPointer = (Target + (TableIndex * sizeof(sizeptr_t)));
+			// Each function is stored in an array - also get a copy of the original
+			uint8_t *virtualPointer = (Target + (TableIndex * sizeof(ULONGLONG)));
+			uint8_t *original		= *(uint8_t **)virtualPointer;
 
-			DWORD dwOld = 0;
-			if (!VirtualProtect(virtualPointer, sizeof(sizeptr_t), PAGE_EXECUTE_READWRITE, &dwOld))
+			if (!Internal::AtomicCopy4X8(virtualPointer, Detour, sizeof(ULONGLONG)))
 				return nullptr;
-
-			uint8_t *original = (uint8_t *)InterlockedExchange64((volatile LONG64 *)virtualPointer, (LONG64)Detour);
-
-			VirtualProtect(virtualPointer, sizeof(sizeptr_t), dwOld, &dwOld);
 
 			return original;
 		}
@@ -145,16 +141,14 @@ namespace Detours
 			hookGen.AddCode("push 0x%X",						((uint64_t)unhookStart) & 0xFFFFFFFF);
 			hookGen.AddCode("mov dword ptr ss:[rsp+0x4], 0x%X", ((uint64_t)unhookStart) >> 32);
 			hookGen.AddCode("retn");
-
-			memcpy(binstr_ptr, hookGen.GetStream(), hookGen.GetStreamLength());
+			hookGen.WriteStreamTo(binstr_ptr);
 
 			// Jump to user function (Write the trampoline)
 			AsmGen userGen(Header->TrampolineOffset, ASMGEN_64);
 			userGen.AddCode("push 0x%X",						((uint64_t)Header->DetourOffset) & 0xFFFFFFFF);
 			userGen.AddCode("mov dword ptr ss:[rsp+0x4], 0x%X", ((uint64_t)Header->DetourOffset) >> 32);
 			userGen.AddCode("retn");
-
-			memcpy(Header->TrampolineOffset, userGen.GetStream(), userGen.GetStreamLength());
+			userGen.WriteStreamTo(Header->TrampolineOffset);
 		}
 
 		bool DetourWriteRaxJump(JumpTrampolineHeader *Header)
@@ -165,7 +159,7 @@ namespace Detours
 			gen.AddCode("mov rax, 0x%llx", Header->TrampolineOffset);
 			gen.AddCode("jmp rax");
 
-			return DetourCopyMemory(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
+			return Internal::WriteMemory(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
 		}
 
 		bool DetourWritePushRet(JumpTrampolineHeader *Header)
@@ -177,7 +171,7 @@ namespace Detours
 			gen.AddCode("mov dword ptr ss:[rsp+0x4], 0x%X", ((uint64_t)Header->TrampolineOffset) >> 32);
 			gen.AddCode("retn");
 
-			return DetourCopyMemory(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
+			return Internal::WriteMemory(Header->CodeOffset, gen.GetStream(), gen.GetStreamLength());
 		}
 
 		uint32_t DetourGetHookLength(X64Option Options)
@@ -186,7 +180,7 @@ namespace Detours
 
 			switch(Options)
 			{
-			case X64Option::USE_RAX_JUMP:	size += RAX_JUMP_64;		break;
+			case X64Option::USE_RAX_JUMP:	size += RAX_JUMP_LENGTH_64;	break;
 			case X64Option::USE_PUSH_RET:	size += PUSH_RET_LENGTH_64;	break;
 			default:						size = 0;					break;
 			}

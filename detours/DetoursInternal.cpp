@@ -1,12 +1,12 @@
 #include "stdafx.h"
 
-namespace Detours
+namespace Detours::Internal
 {
 	uint32_t GlobalOptions;
 
 	void SetGlobalOptions(uint32_t Options)
 	{
-		InterlockedExchange((volatile LONG *)&GlobalOptions, Options & OPT_MASK);
+		LockExchange32((volatile LONG *)&GlobalOptions, Options & OPT_MASK);
 	}
 
 	uint32_t GetGlobalOptions()
@@ -14,7 +14,7 @@ namespace Detours
 		return GlobalOptions;
 	}
 
-	uint8_t *DetourAlignAddress(uint64_t Address, uint8_t Align)
+	uint8_t *AlignAddress(uint64_t Address, uint8_t Align)
 	{
 		if (Address % Align != 0)
 			Address += Align - Address % 8;
@@ -22,7 +22,7 @@ namespace Detours
 		return (uint8_t *)Address;
 	}
 
-	bool DetourAtomicCopy4X8(uint8_t *Target, uint8_t *Memory, sizeptr_t Length)
+	bool AtomicCopy4X8(uint8_t *Target, uint8_t *Memory, sizeptr_t Length)
 	{
 		// Buffer to hold temporary opcodes
 		char buffer[8];
@@ -44,7 +44,7 @@ namespace Detours
 			memcpy(&buffer, Memory, Length);
 
 			// Write all 4 bytes at once
-			InterlockedExchange((volatile LONG *)Target, *(LONG *)&buffer);
+			LockExchange32((volatile LONG *)Target, *(LONG *)&buffer);
 		}
 		else if(Length <= 8)
 		{
@@ -55,7 +55,7 @@ namespace Detours
 			memcpy(&buffer, Memory, Length);
 
 			// Write all 8 bytes at once
-			_intrinInterlockedExchange64((volatile LONGLONG *)Target, *(LONGLONG *)&buffer);
+			LockExchange64((volatile LONGLONG *)Target, *(LONGLONG *)&buffer);
 		}
 
 		// Ignore if this fails, the memory was copied either way
@@ -64,7 +64,7 @@ namespace Detours
 		return true;
 	}
 
-	bool DetourCopyMemory(uint8_t *Target, uint8_t *Memory, sizeptr_t Length)
+	bool WriteMemory(uint8_t *Target, uint8_t *Memory, sizeptr_t Length)
 	{
 		DWORD dwOld = 0;
 		if (!VirtualProtect(Target, Length, PAGE_EXECUTE_READWRITE, &dwOld))
@@ -78,7 +78,7 @@ namespace Detours
 		return true;
 	}
 
-	bool DetourFlushCache(uint8_t *Target, sizeptr_t Length)
+	bool FlushCache(uint8_t *Target, sizeptr_t Length)
 	{
 		return FlushInstructionCache(GetCurrentProcess(), Target, Length) != FALSE;
 	}

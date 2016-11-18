@@ -20,32 +20,6 @@ namespace Detours
 	const static uint32_t OPT_MASK					= 0xFFF;	// Mask for all options
 	const static uint32_t OPT_NONE					= 0x000;	// No options
 
-	struct JumpTrampolineHeader
-	{
-		uint32_t Magic;				// Used to verify the header
-		uint32_t Random;			// Variable to change the code/data hash
-
-		uint8_t *CodeOffset;		// Offset, in code, that was hooked:	"target"
-		uint8_t *DetourOffset;		// User function that is called:		"destination"
-
-		size_t InstructionLength;	// Length of the instructions that were replaced
-		uint8_t *InstructionOffset;	// Where the backed-up instructions are
-
-		size_t TrampolineLength;	// Length of the trampoline
-		uint8_t *TrampolineOffset;	// Code offset where 'jmp (q/d)word ptr <user function>' occurs
-
-		// Anything after this struct is null data or pure code (instructions/trampoline)
-	};
-
-	void		SetGlobalOptions(uint32_t Options);
-	uint32_t	GetGlobalOptions();
-
-	uint8_t		*DetourAlignAddress(uint64_t Address, uint8_t Align);
-
-	bool		DetourAtomicCopy4X8(uint8_t *Target, uint8_t *Memory, sizeptr_t Length);
-	bool		DetourCopyMemory(uint8_t *Target, uint8_t *Memory, sizeptr_t Length);
-	bool		DetourFlushCache(uint8_t *Target, sizeptr_t Length);
-
 #ifdef _M_IX86
 	enum class X86Option
 	{
@@ -84,13 +58,7 @@ namespace Detours
 		// Removes a detoured virtual table index
 		bool		VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex);
 
-		void		DetourWriteStub(JumpTrampolineHeader *Header);
-		bool		DetourWriteJump(JumpTrampolineHeader *Header);
-		bool		DetourWriteCall(JumpTrampolineHeader *Header);
-		bool		DetourWriteEaxJump(JumpTrampolineHeader *Header);
-		bool		DetourWriteJumpPtr(JumpTrampolineHeader *Header);
-		bool		DetourWritePushRet(JumpTrampolineHeader *Header);
-
+		// Returns a predetermined hook length from active local and global options
 		uint32_t	DetourGetHookLength(X86Option Options);
 	}
 #endif // _M_IX86
@@ -130,10 +98,7 @@ namespace Detours
 		// Removes a detoured virtual table index
 		bool		VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex);
 
-		void		DetourWriteStub(JumpTrampolineHeader *Header);
-		bool		DetourWriteRaxJump(JumpTrampolineHeader *Header);
-		bool		DetourWritePushRet(JumpTrampolineHeader *Header);
-
+		// Returns a predetermined hook length from active local and global options
 		uint32_t	DetourGetHookLength(X64Option Options);
 	}
 #endif // _WIN64
