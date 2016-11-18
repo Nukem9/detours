@@ -58,6 +58,9 @@ namespace Detours
 		// Removes a detoured virtual table index
 		bool		VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex);
 
+		// Hook a function via the PE import address table
+		uint8_t		*DetourIAT(uint8_t *TargetModule, uint8_t *Detour, const char *ImportModule, const char *API);
+
 		// Returns a predetermined hook length from active local and global options
 		uint32_t	DetourGetHookLength(X86Option Options);
 	}
@@ -97,6 +100,9 @@ namespace Detours
 
 		// Removes a detoured virtual table index
 		bool		VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex);
+
+		// Hook a function via the PE import address table
+		uint8_t		*DetourIAT(uint8_t *TargetModule, uint8_t *Detour, const char *ImportModule, const char *API);
 
 		// Returns a predetermined hook length from active local and global options
 		uint32_t	DetourGetHookLength(X64Option Options);

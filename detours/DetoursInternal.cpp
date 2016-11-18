@@ -82,4 +82,78 @@ namespace Detours::Internal
 	{
 		return FlushInstructionCache(GetCurrentProcess(), Target, Length) != FALSE;
 	}
+
+	uint8_t *IATHook(uint8_t *Module, const char *ImportModule, const char *API, uint8_t *Detour)
+	{
+		// Validate DOS Header
+		ULONG_PTR moduleBase		= (ULONG_PTR)Module;
+		PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)moduleBase;
+
+		if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+			return nullptr;
+
+		// Validate PE Header and (64-bit|32-bit) module type
+		PIMAGE_NT_HEADERS64 ntHeaders = (PIMAGE_NT_HEADERS64)(moduleBase + dosHeader->e_lfanew);
+
+		if (ntHeaders->Signature != IMAGE_NT_SIGNATURE)
+			return nullptr;
+
+		if (ntHeaders->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC)
+			return nullptr;
+
+		// Get the load configuration section which holds the security cookie address
+		auto dataDirectory	= ntHeaders->OptionalHeader.DataDirectory;
+		DWORD sectionRVA	= dataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+		DWORD sectionSize	= dataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size;
+
+		if (sectionRVA == 0 || sectionSize == 0)
+			return nullptr;
+
+		// https://jpassing.com/2008/01/06/using-import-address-table-hooking-for-testing/
+		//
+		// Iterate over each import descriptor
+		auto importDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)(moduleBase + sectionRVA);
+
+		for (size_t i = 0; importDescriptor[i].Characteristics != 0; i++)
+		{
+			PSTR dllName = (PSTR)(moduleBase + importDescriptor[i].Name);
+
+			// Is this the specific module the user wants?
+			if (!_stricmp(dllName, ImportModule))
+			{
+				if (!importDescriptor[i].FirstThunk || !importDescriptor[i].OriginalFirstThunk)
+					return false;
+
+				auto thunk		= (PIMAGE_THUNK_DATA)(moduleBase + importDescriptor[i].FirstThunk);
+				auto origThunk	= (PIMAGE_THUNK_DATA)(moduleBase + importDescriptor[i].OriginalFirstThunk);
+
+				// Loop over each import entry for this dll
+				for (; origThunk->u1.Function != 0; origThunk++, thunk++)
+				{
+					// Skip ordinal imports (no names)
+					if (origThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
+						continue;
+
+					// Compare the imported API name
+					auto import = (PIMAGE_IMPORT_BY_NAME)(moduleBase + origThunk->u1.AddressOfData);
+
+					if (!strcmp(API, (const char *)import->Name))
+					{
+						uint8_t *original	= (uint8_t *)thunk->u1.Function;
+						uint8_t *newPointer = Detour;
+
+						// Swap the pointer atomically
+						if (!AtomicCopy4X8((uint8_t *)&thunk->u1.Function, (uint8_t *)&newPointer, sizeof(thunk->u1.Function)))
+							return nullptr;
+
+						// Done
+						return original;
+					}
+				}
+			}
+		}
+
+		// API or module name wasn't found
+		return nullptr;
+	}
 }

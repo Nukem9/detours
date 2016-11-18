@@ -127,6 +127,11 @@ namespace Detours
 			return DetourVTable(Target, Function, TableIndex) != nullptr;
 		}
 
+		uint8_t *DetourIAT(uint8_t *TargetModule, uint8_t *Detour, const char *ImportModule, const char *API)
+		{
+			return Internal::IATHook(TargetModule, ImportModule, API, Detour);
+		}
+
 		void DetourWriteStub(JumpTrampolineHeader *Header)
 		{
 			/********** Allocated code block modifications **********/

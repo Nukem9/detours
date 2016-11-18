@@ -29,6 +29,8 @@ namespace Detours
 		bool		AtomicCopy4X8(uint8_t *Target, uint8_t *Memory, sizeptr_t Length);
 		bool		WriteMemory(uint8_t *Target, uint8_t *Memory, sizeptr_t Length);
 		bool		FlushCache(uint8_t *Target, sizeptr_t Length);
+
+		uint8_t		*IATHook(uint8_t *Module, const char *ImportModule, const char *API, uint8_t *Detour);
 	}
 
 #ifdef _M_IX86
