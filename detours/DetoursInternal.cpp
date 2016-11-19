@@ -110,44 +110,44 @@ namespace Detours::Internal
 			return nullptr;
 
 		// https://jpassing.com/2008/01/06/using-import-address-table-hooking-for-testing/
+		// https://llvm.org/svn/llvm-project/compiler-rt/trunk/lib/interception/interception_win.cc
 		//
 		// Iterate over each import descriptor
 		auto importDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)(moduleBase + sectionRVA);
 
-		for (size_t i = 0; importDescriptor[i].Characteristics != 0; i++)
+		for (size_t i = 0; importDescriptor[i].Name != 0; i++)
 		{
 			PSTR dllName = (PSTR)(moduleBase + importDescriptor[i].Name);
 
 			// Is this the specific module the user wants?
 			if (!_stricmp(dllName, ImportModule))
 			{
-				if (!importDescriptor[i].FirstThunk || !importDescriptor[i].OriginalFirstThunk)
+				if (!importDescriptor[i].FirstThunk)
 					return false;
 
-				auto thunk		= (PIMAGE_THUNK_DATA)(moduleBase + importDescriptor[i].FirstThunk);
-				auto origThunk	= (PIMAGE_THUNK_DATA)(moduleBase + importDescriptor[i].OriginalFirstThunk);
+				auto nameTable		= (PIMAGE_THUNK_DATA)(moduleBase + importDescriptor[i].OriginalFirstThunk);
+				auto importTable	= (PIMAGE_THUNK_DATA)(moduleBase + importDescriptor[i].FirstThunk);
 
-				// Loop over each import entry for this dll
-				for (; origThunk->u1.Function != 0; origThunk++, thunk++)
+				for (; nameTable->u1.Ordinal != 0; ++nameTable, ++importTable)
 				{
-					// Skip ordinal imports (no names)
-					if (origThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
-						continue;
-
-					// Compare the imported API name
-					auto import = (PIMAGE_IMPORT_BY_NAME)(moduleBase + origThunk->u1.AddressOfData);
-
-					if (!strcmp(API, (const char *)import->Name))
+					if (!IMAGE_SNAP_BY_ORDINAL(nameTable->u1.Ordinal))
 					{
-						uint8_t *original	= (uint8_t *)thunk->u1.Function;
-						uint8_t *newPointer = Detour;
+						auto importName = (PIMAGE_IMPORT_BY_NAME)(moduleBase + nameTable->u1.ForwarderString);
+						auto funcName	= (const char *)&importName->Name[0];
 
-						// Swap the pointer atomically
-						if (!AtomicCopy4X8((uint8_t *)&thunk->u1.Function, (uint8_t *)&newPointer, sizeof(thunk->u1.Function)))
-							return nullptr;
+						// If this is the function name we want, hook it
+						if (!strcmp(funcName, API))
+						{
+							uint8_t *original	= (uint8_t *)importTable->u1.AddressOfData;
+							uint8_t *newPointer = Detour;
 
-						// Done
-						return original;
+							// Swap the pointer atomically
+							if (!AtomicCopy4X8((uint8_t *)&importTable->u1.AddressOfData, (uint8_t *)&newPointer, sizeof(importTable->u1.AddressOfData)))
+								return nullptr;
+
+							// Done
+							return original;
+						}
 					}
 				}
 			}
