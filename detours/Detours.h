@@ -19,14 +19,39 @@ namespace Detours
 
 	const static uint32_t OPT_MASK					= 0xFFF;	// Mask for all options
 	const static uint32_t OPT_NONE					= 0x000;	// No options
+	const static uint32_t OPT_BREAK_ON_FAIL			= 0x001;	// Throw INT3 on failure
+
+	struct JumpTrampolineHeader
+	{
+		uint32_t Magic;				// Used to verify the header
+		uint32_t Random;			// Variable to change the code/data hash
+
+		sizeptr_t CodeOffset;		// Offset, in code, that was hooked:	"target"
+		sizeptr_t DetourOffset;		// User function that is called:		"destination"
+
+		sizeptr_t InstructionLength;// Length of the instructions that were replaced
+		sizeptr_t InstructionOffset;// Where the backed-up instructions are
+
+		sizeptr_t TrampolineLength;	// Length of the trampoline
+		sizeptr_t TrampolineOffset;	// Code offset where 'jmp (q/d)word ptr <user function>' occurs
+
+		// Anything after this struct is null data or pure code (instructions/trampoline)
+	};
+
+	void		SetGlobalOptions(uint32_t Options);
+	uint32_t	GetGlobalOptions();
+
+	uint64_t	DetourAlignAddress(uint64_t Address, uint8_t Align);
+
+	bool		DetourCopyMemory(sizeptr_t Target, sizeptr_t Memory, sizeptr_t Length);
+	bool		DetourFlushCache(sizeptr_t Target, sizeptr_t Length);
+	uint8_t		*IATHook(uint8_t *Module, const char *ImportModule, const char *API, uint8_t *Detour);
 
 #ifdef _M_IX86
 	enum class X86Option
 	{
 		USE_JUMP,		// jmp <address>;
 		USE_CALL,		// call <address>;
-		USE_EAX_JUMP,	// mov eax, <address>; jmp eax;
-		USE_JUMP_PTR,	// jmp dword ptr [<address>];
 		USE_PUSH_RET,	// push <address>; retn;
 	};
 
@@ -58,29 +83,31 @@ namespace Detours
 		// Removes a detoured virtual table index
 		bool		VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex);
 
-		// Hook a function via the PE import address table
-		uint8_t		*DetourIAT(uint8_t *TargetModule, uint8_t *Detour, const char *ImportModule, const char *API);
+		void		DetourWriteStub(JumpTrampolineHeader *Header);
+		bool		DetourWriteJump(JumpTrampolineHeader *Header);
+		bool		DetourWriteCall(JumpTrampolineHeader *Header);
+		bool		DetourWritePushRet(JumpTrampolineHeader *Header);
 
-		// Returns a predetermined hook length from active local and global options
 		uint32_t	DetourGetHookLength(X86Option Options);
 	}
 #endif // _M_IX86
 
-#ifdef _WIN64
+#ifdef _M_AMD64
 	enum class X64Option
 	{
 		USE_PUSH_RET,	// push <low 32 address>; [rsp+4h] = <hi 32 addr>; retn;
 		USE_RAX_JUMP,	// mov rax, <address>; jmp rax;
+		USE_REL32_JUMP, // jmp <address within +/- 2GB>
 	};
 
 	namespace X64
 	{
 		// Redirects a single static function to another
-		uint8_t		*DetourFunction(uint8_t *Target, uint8_t *Detour, X64Option Options = X64Option::USE_PUSH_RET);
+		uint8_t		*DetourFunction(uint8_t *Target, uint8_t *Detour, X64Option Options = X64Option::USE_REL32_JUMP);
 
 		// Redirects a class member function (__thiscall) to another
 		template<typename T>
-		uint8_t		*DetourFunctionClass(uint8_t *Target, T Detour, X64Option Options = X64Option::USE_PUSH_RET)
+		uint8_t		*DetourFunctionClass(uint8_t *Target, T Detour, X64Option Options = X64Option::USE_REL32_JUMP)
 		{
 			return DetourFunction(Target, *(uint8_t **)&Detour, Options);
 		}
@@ -101,11 +128,12 @@ namespace Detours
 		// Removes a detoured virtual table index
 		bool		VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex);
 
-		// Hook a function via the PE import address table
-		uint8_t		*DetourIAT(uint8_t *TargetModule, uint8_t *Detour, const char *ImportModule, const char *API);
+		void		DetourWriteStub(JumpTrampolineHeader *Header);
+		bool		DetourWritePushRet(JumpTrampolineHeader *Header);
+		bool		DetourWriteRaxJump(JumpTrampolineHeader *Header);
+		bool		DetourWriteRel32Jump(JumpTrampolineHeader *Header);
 
-		// Returns a predetermined hook length from active local and global options
 		uint32_t	DetourGetHookLength(X64Option Options);
 	}
-#endif // _WIN64
+#endif // _M_AMD64
 }

@@ -6,7 +6,7 @@ namespace Detours::Internal
 
 	void SetGlobalOptions(uint32_t Options)
 	{
-		LockExchange32((volatile LONG *)&GlobalOptions, Options & OPT_MASK);
+		InterlockedExchange((volatile LONG *)&GlobalOptions, (LONG)(Options & OPT_MASK));
 	}
 
 	uint32_t GetGlobalOptions()
@@ -44,7 +44,7 @@ namespace Detours::Internal
 			memcpy(&buffer, Memory, Length);
 
 			// Write all 4 bytes at once
-			LockExchange32((volatile LONG *)Target, *(LONG *)&buffer);
+			InterlockedExchange((volatile LONG *)Target, *(LONG *)&buffer);
 		}
 		else if(Length <= 8)
 		{
@@ -55,7 +55,7 @@ namespace Detours::Internal
 			memcpy(&buffer, Memory, Length);
 
 			// Write all 8 bytes at once
-			LockExchange64((volatile LONGLONG *)Target, *(LONGLONG *)&buffer);
+			_intrinInterlockedExchange64((volatile LONGLONG *)Target, *(LONGLONG *)&buffer);
 		}
 
 		// Ignore if this fails, the memory was copied either way
