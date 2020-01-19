@@ -46,6 +46,7 @@ namespace Detours
 	bool		DetourCopyMemory(sizeptr_t Target, sizeptr_t Memory, sizeptr_t Length);
 	bool		DetourFlushCache(sizeptr_t Target, sizeptr_t Length);
 	uint8_t		*IATHook(uint8_t *Module, const char *ImportModule, const char *API, uint8_t *Detour);
+	uint8_t		*IATDelayedHook(uint8_t *Module, const char *ImportModule, const char *API, uint8_t *Detour);
 
 #ifdef _M_IX86
 	enum class X86Option
