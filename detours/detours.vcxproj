@@ -172,7 +172,6 @@
     <ClCompile Include="Detours.cpp" />
     <ClCompile Include="Detours32.cpp" />
     <ClCompile Include="Detours64.cpp" />
-    <ClCompile Include="DetoursInternal.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
