@@ -137,7 +137,7 @@ namespace Detours
 				for (uint32_t i = 0; i < header->InstructionLength; i++)
 					nops.push_back(0x90);
 
-				DetourCopyMemory(header->InstructionOffset, reinterpret_cast<uintptr_t>(nops.data()), nops.size());
+				DetourCopyMemory(header->CodeOffset, reinterpret_cast<uintptr_t>(nops.data()), nops.size());
 			}
 
 			bool result = false;
@@ -231,7 +231,7 @@ namespace Detours
 				*reinterpret_cast<uint32_t *>(&buffer[2]) = 0;
 				*reinterpret_cast<uint64_t *>(&buffer[6]) = Destination;
 
-				return DetourCopyMemory(Base, (uintptr_t)&buffer, sizeof(buffer));
+				return DetourCopyMemory(Base, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 			};
 
 			// Jump to hooked function (Backed up instructions) [UserFunction -> OldInstructions -> THIS -> HookedFunction]
@@ -297,7 +297,7 @@ namespace Detours
 
 			uint8_t buffer[5];
 			buffer[0] = 0xE9;
-			*reinterpret_cast<uint32_t *>(&buffer[1]) = static_cast<int32_t>(displacement);
+			*reinterpret_cast<int32_t *>(&buffer[1]) = static_cast<int32_t>(displacement);
 
 			return DetourCopyMemory(Header->CodeOffset, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 		}
@@ -315,7 +315,7 @@ namespace Detours
 
 			uint8_t buffer[5];
 			buffer[0] = 0xE8;
-			*reinterpret_cast<uint32_t *>(&buffer[1]) = static_cast<int32_t>(displacement);
+			*reinterpret_cast<int32_t *>(&buffer[1]) = static_cast<int32_t>(displacement);
 
 			return DetourCopyMemory(Header->CodeOffset, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 		}

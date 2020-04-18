@@ -22,31 +22,31 @@ namespace Detours
 		#define ALIGN_32(x)			DetourAlignAddress((uint64_t)(x), 0x4);
 		#define BREAK_ON_ERROR()	{ if (GetGlobalOptions() & OPT_BREAK_ON_FAIL) __debugbreak(); }
 
-		uint8_t *DetourFunction(uint8_t *Target, uint8_t *Detour, X86Option Options)
+		uintptr_t DetourFunction(uintptr_t Target, uintptr_t Detour, X86Option Options)
 		{
 			if (!Target || !Detour)
 			{
 				BREAK_ON_ERROR();
-				return nullptr;
+				return 0;
 			}
 
 			// Init decoder exactly once
 			static bool decoderInit = []()
 			{
-				return DetoursInitZydis32() == -1 ? false : true;
+				return DetoursInitZydis64() == -1 ? false : true;
 			}();
 
 			if (!decoderInit)
 			{
 				BREAK_ON_ERROR();
-				return nullptr;
+				return 0;
 			}
 
 			// Decode the actual assembly
 			uint32_t neededSize = DetourGetHookLength(Options);
 			uint32_t totalInstrSize = 0;
 
-			for (int len = 0; len != -1; len = DetoursGetNextInstructionLength((void *)(Target + totalInstrSize)))
+			for (int len = 0; len != -1; len = DetoursGetNextInstructionLength(reinterpret_cast<void *>(Target + totalInstrSize)))
 			{
 				totalInstrSize += len;
 
@@ -58,7 +58,7 @@ namespace Detours
 			if (neededSize == 0 || totalInstrSize < neededSize)
 			{
 				BREAK_ON_ERROR();
-				return nullptr;
+				return 0;
 			}
 
 			// Allocate the trampoline data
@@ -74,23 +74,23 @@ namespace Detours
 			if (!jumpTrampolinePtr)
 			{
 				BREAK_ON_ERROR();
-				return nullptr;
+				return 0;
 			}
 
 			// Fill out the header
-			JumpTrampolineHeader *header = (JumpTrampolineHeader *)jumpTrampolinePtr;
+			auto header					= reinterpret_cast<JumpTrampolineHeader *>(jumpTrampolinePtr);
 
 			header->Magic				= HEADER_MAGIC;
 			header->Random				= GetCurrentProcessId() + GetCurrentThreadId() + totalInstrSize;
 
-			header->CodeOffset			= (sizeptr_t)Target;
-			header->DetourOffset		= (sizeptr_t)Detour;
+			header->CodeOffset			= Target;
+			header->DetourOffset		= Detour;
 
 			header->InstructionLength	= totalInstrSize;
-			header->InstructionOffset	= (sizeptr_t)ALIGN_32(jumpTrampolinePtr + sizeof(JumpTrampolineHeader));
+			header->InstructionOffset	= ALIGN_32(jumpTrampolinePtr + sizeof(JumpTrampolineHeader));
 
 			header->TrampolineLength	= JUMP_LENGTH_32;
-			header->TrampolineOffset	= (sizeptr_t)ALIGN_32(header->InstructionOffset + header->InstructionLength + JUMP_LENGTH_32 + header->TrampolineLength);
+			header->TrampolineOffset	= ALIGN_32(header->InstructionOffset + header->InstructionLength + JUMP_LENGTH_32 + header->TrampolineLength);
 
 			// Copy the old instructions over
 			DetourCopyMemory(header->InstructionOffset, header->CodeOffset, header->InstructionLength);
@@ -98,14 +98,24 @@ namespace Detours
 			// Write the assembly in the allocation block
 			DetourWriteStub(header);
 
-			bool result = true;
+			// Write padding nops if the hook splices the middle of an instruction
+			if ((GetGlobalOptions() & OPT_DO_NOT_PAD_NOPS) == 0)
+			{
+				std::vector<uint8_t> nops;
+
+				for (uint32_t i = 0; i < header->InstructionLength; i++)
+					nops.push_back(0x90);
+
+				DetourCopyMemory(header->CodeOffset, reinterpret_cast<uintptr_t>(nops.data()), nops.size());
+			}
+
+			bool result = false;
 
 			switch (Options)
 			{
 			case X86Option::USE_JUMP:		result = DetourWriteJump(header);		break;
 			case X86Option::USE_CALL:		result = DetourWriteCall(header);		break;
 			case X86Option::USE_PUSH_RET:	result = DetourWritePushRet(header);	break;
-			default:						result = false;							break;
 			}
 
 			// If an operation failed free the memory and exit
@@ -114,17 +124,18 @@ namespace Detours
 				VirtualFree(jumpTrampolinePtr, 0, MEM_RELEASE);
 
 				BREAK_ON_ERROR();
-				return nullptr;
+				return 0;
 			}
 
-			// Set read/execution on the page & flush any cache
+			// Force flush any possible CPU cache
+			DetourFlushCache(Target, totalInstrSize);
+			DetourFlushCache(reinterpret_cast<uintptr_t>(jumpTrampolinePtr), allocSize);
+
+			// Set read/execution on the page
 			DWORD dwOld = 0;
 			VirtualProtect(jumpTrampolinePtr, allocSize, PAGE_EXECUTE_READ, &dwOld);
 
-			DetourFlushCache((sizeptr_t)Target, totalInstrSize);
-			DetourFlushCache((sizeptr_t)jumpTrampolinePtr, allocSize);
-
-			return (uint8_t *)header->InstructionOffset;
+			return header->InstructionOffset;
 		}
 
 		bool DetourRemove(uint8_t *Trampoline)
@@ -135,7 +146,7 @@ namespace Detours
 				return false;
 			}
 
-			JumpTrampolineHeader *header = (JumpTrampolineHeader *)(Trampoline - sizeof(JumpTrampolineHeader));
+			auto header = reinterpret_cast<JumpTrampolineHeader *>(Trampoline - sizeof(JumpTrampolineHeader));
 
 			if (header->Magic != HEADER_MAGIC)
 			{
@@ -156,29 +167,25 @@ namespace Detours
 			return true;
 		}
 
-		uint8_t *DetourVTable(uint8_t *Target, uint8_t *Detour, uint32_t TableIndex)
+		uintptr_t DetourVTable(uintptr_t Target, uintptr_t Detour, uint32_t TableIndex)
 		{
 			// Each function is stored in an array
-			uint8_t *virtualPointer = (Target + (TableIndex * sizeof(ULONG)));
+			auto virtualPointer = reinterpret_cast<void *>(Target + (TableIndex * sizeof(void *)));
 
 			DWORD dwOld = 0;
-			if (!VirtualProtect(virtualPointer, sizeof(ULONG), PAGE_EXECUTE_READWRITE, &dwOld))
-			{
-				BREAK_ON_ERROR();
-				return nullptr;
-			}
+			if (!VirtualProtect(virtualPointer, sizeof(void *), PAGE_EXECUTE_READWRITE, &dwOld))
+				return 0;
 
-			uint8_t *original = (uint8_t *)InterlockedExchange((volatile ULONG *)virtualPointer, (ULONG)Detour);
+			auto original = InterlockedExchangePointer(reinterpret_cast<void **>(virtualPointer), reinterpret_cast<void *>(Detour));
 
-			VirtualProtect(virtualPointer, sizeof(ULONG), dwOld, &dwOld);
-
-			return original;
+			VirtualProtect(virtualPointer, sizeof(void *), dwOld, &dwOld);
+			return reinterpret_cast<uintptr_t>(original);
 		}
 
-		bool VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex)
+		bool VTableRemove(uintptr_t Target, uintptr_t Function, uint32_t TableIndex)
 		{
 			// Reverse VTable detour
-			return DetourVTable(Target, Function, TableIndex) != nullptr;
+			return DetourVTable(Target, Function, TableIndex) != 0;
 		}
 
 		void DetourWriteStub(JumpTrampolineHeader *Header)
@@ -186,19 +193,19 @@ namespace Detours
 			/********** Allocated code block modifications **********/
 			uint8_t buffer[5];
 			
-			sizeptr_t unhookStart = (Header->CodeOffset + Header->InstructionLength);		// Determine where the 'unhooked' part of the function starts
-			sizeptr_t binstrPtr = (Header->InstructionOffset + Header->InstructionLength);	// Jump to hooked function (Backed up instructions)
+			auto unhookStart = Header->CodeOffset + Header->InstructionLength;		// Determine where the 'unhooked' part of the function starts
+			auto binstrPtr = Header->InstructionOffset + Header->InstructionLength;// Jump to hooked function (Backed up instructions)
 
 			buffer[0] = 0xE9;
-			*(int32_t *)&buffer[1] = (int32_t)(unhookStart - (binstrPtr + 5));
+			*reinterpret_cast<int32_t *>(&buffer[1]) = static_cast<int32_t>(unhookStart - (binstrPtr + 5));
 
-			memcpy((void *)binstrPtr, &buffer, sizeof(buffer));
+			DetourCopyMemory(binstrPtr, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 
 			// Jump to user function (Write the trampoline)
 			buffer[0] = 0xE9;
-			*(int32_t *)&buffer[1] = (int32_t)(Header->DetourOffset - (Header->TrampolineOffset + 5));
+			*reinterpret_cast<int32_t *>(&buffer[1]) = static_cast<int32_t>(Header->DetourOffset - (Header->TrampolineOffset + 5));
 
-			memcpy((void *)Header->TrampolineOffset, &buffer, sizeof(buffer));
+			DetourCopyMemory(Header->TrampolineOffset, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 		}
 
 		bool DetourWriteJump(JumpTrampolineHeader *Header)
@@ -207,9 +214,9 @@ namespace Detours
 			uint8_t buffer[5];
 
 			buffer[0] = 0xE9;
-			*(int32_t *)&buffer[1] = (int32_t)(Header->TrampolineOffset - (Header->CodeOffset + 5));
+			*reinterpret_cast<int32_t *>(&buffer[1]) = static_cast<int32_t>(Header->TrampolineOffset - (Header->CodeOffset + 5));
 
-			return DetourCopyMemory(Header->CodeOffset, (sizeptr_t)&buffer, sizeof(buffer));
+			return DetourCopyMemory(Header->CodeOffset, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 		}
 
 		bool DetourWriteCall(JumpTrampolineHeader *Header)
@@ -218,9 +225,9 @@ namespace Detours
 			uint8_t buffer[5];
 
 			buffer[0] = 0xE8;
-			*(int32_t *)&buffer[1] = (int32_t)(Header->TrampolineOffset - (Header->CodeOffset + 5));
+			*reinterpret_cast<int32_t *>(&buffer[1]) = static_cast<int32_t>(Header->TrampolineOffset - (Header->CodeOffset + 5));
 
-			return DetourCopyMemory(Header->CodeOffset, (sizeptr_t)&buffer, sizeof(buffer));
+			return DetourCopyMemory(Header->CodeOffset, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 		}
 
 		bool DetourWritePushRet(JumpTrampolineHeader *Header)
@@ -230,12 +237,12 @@ namespace Detours
 
 			// push 0xXXXXX
 			buffer[0] = 0x68;
-			*(uint32_t *)&buffer[1] = Header->TrampolineOffset;
+			*reinterpret_cast<uint32_t *>(&buffer[1]) = Header->TrampolineOffset;
 
 			// retn
 			buffer[5] = 0xC3;
 
-			return DetourCopyMemory(Header->CodeOffset, (sizeptr_t)&buffer, sizeof(buffer));
+			return DetourCopyMemory(Header->CodeOffset, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 		}
 
 		uint32_t DetourGetHookLength(X86Option Options)
@@ -247,7 +254,6 @@ namespace Detours
 			case X86Option::USE_JUMP:		size += JUMP_LENGTH_32;		break;
 			case X86Option::USE_CALL:		size += CALL_LENGTH_32;		break;
 			case X86Option::USE_PUSH_RET:	size += PUSH_RET_LENGTH_32;	break;
-			default:						size = 0;					break;
 			}
 
 			return size;

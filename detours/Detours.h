@@ -51,37 +51,37 @@ namespace Detours
 	namespace X86
 	{
 		// Redirects a single static function to another
-		uint8_t		*DetourFunction(uint8_t *Target, uint8_t *Detour, X86Option Options = X86Option::USE_JUMP);
+		uintptr_t DetourFunction(uintptr_t Target, uintptr_t Detour, X86Option Options = X86Option::USE_JUMP);
 
 		// Redirects a class member function (__thiscall) to another
 		template<typename T>
-		uint8_t		*DetourFunctionClass(uint8_t *Target, T Detour, X86Option Options = X86Option::USE_JUMP)
+		uintptr_t DetourFunctionClass(uintptr_t Target, T Detour, X86Option Options = X86Option::USE_JUMP)
 		{
-			return DetourFunction(Target, *(uint8_t **)&Detour, Options);
+			return DetourFunction(Target, *(uintptr_t *)&Detour, Options);
 		}
 
 		// Removes a detoured function (Static or class member)
-		bool		DetourRemove(uint8_t *Trampoline);
+		bool DetourRemove(uintptr_t Trampoline);
 
 		// Redirects an index in a virtual table
-		uint8_t		*DetourVTable(uint8_t *Target, uint8_t *Detour, uint32_t TableIndex);
+		uintptr_t DetourVTable(uintptr_t Target, uintptr_t Detour, uint32_t TableIndex);
 
 		// Redirects a class member virtual function (__thiscall) to another
 		template<typename T>
-		uint8_t		*DetourClassVTable(uint8_t *Target, T Detour, uint32_t TableIndex)
+		uintptr_t DetourClassVTable(uintptr_t Target, T Detour, uint32_t TableIndex)
 		{
-			return DetourVTable(Target, *(uint8_t **)&Detour, TableIndex);
+			return DetourVTable(Target, *(uintptr_t *)&Detour, TableIndex);
 		}
 
 		// Removes a detoured virtual table index
-		bool		VTableRemove(uint8_t *Target, uint8_t *Function, uint32_t TableIndex);
+		bool VTableRemove(uintptr_t Target, uintptr_t Function, uint32_t TableIndex);
 
-		void		DetourWriteStub(JumpTrampolineHeader *Header);
-		bool		DetourWriteJump(JumpTrampolineHeader *Header);
-		bool		DetourWriteCall(JumpTrampolineHeader *Header);
-		bool		DetourWritePushRet(JumpTrampolineHeader *Header);
+		void DetourWriteStub(JumpTrampolineHeader *Header);
+		bool DetourWriteJump(JumpTrampolineHeader *Header);
+		bool DetourWriteCall(JumpTrampolineHeader *Header);
+		bool DetourWritePushRet(JumpTrampolineHeader *Header);
 
-		uint32_t	DetourGetHookLength(X86Option Options);
+		uint32_t DetourGetHookLength(X86Option Options);
 	}
 #endif // _M_IX86
 

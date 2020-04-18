@@ -4,5 +4,4 @@
 #include <windows.h>
 #include <vector>
 
-#include "Intrinsic.h"
 #include "Detours.h"
