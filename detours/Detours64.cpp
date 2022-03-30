@@ -261,7 +261,7 @@ namespace Detours
 			buffer[7] = 0x24;
 			buffer[8] = 0x04;
 			*reinterpret_cast<uint32_t *>(&buffer[9]) = static_cast<uint32_t>(Header->TrampolineOffset >> 32);
-			buffer[13] = 0x04;
+			buffer[13] = 0xC3;
 
 			return DetourCopyMemory(Header->CodeOffset, reinterpret_cast<uintptr_t>(&buffer), sizeof(buffer));
 		}
